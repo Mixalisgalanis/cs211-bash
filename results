@@ -1,0 +1,108 @@
+#!/bin/bash
+exec < "$1" #Reading from input file
+while read line #For every line we read
+do
+    #Temporary Strings for string splitting ("A-B:C-D" -> 'A-B', 'C-D')
+    temp_club_strings=(${line%%:*})
+    scores_strings=(${line##*:})
+    #------------------------------------------------------------------
+
+    #Other Temporary Strings for further splitting ("A-B" -> 'A', 'B')
+    home_club=(${temp_club_strings%%-*})
+    away_club=(${temp_club_strings##*-})
+    home_score=(${scores_strings%%-*})
+    away_score=(${scores_strings##*-})
+    #------------------------------------------------------------------
+
+    #Filling up array data. Each club is represented by a specific index
+    #This is how we connect arrays with each other
+    let home_club_index=0; let away_club_index=0
+    if [ ${#clubs[@]} -eq 0 ]; then #First two clubs are entered (all arrays are empty)
+        #Insert club data and estimating indexes
+        clubs+=(${home_club})
+        home_club_index=$[${#clubs[@]}-1]
+        clubs+=(${away_club})
+        away_club_index=$[${#clubs[@]}-1]
+    else #when arrays are not empty
+        #Checking new temp clubs with existing ones to avoid duplicate clubs
+        #So we estimate the club indexes and they will indicate if a club is new or not
+        let initial_length=${#clubs[@]}
+        for ((i=0; i < ${initial_length}; i++))
+        do
+            if [ "${clubs[i]}" == "${home_club}" ]; then
+                home_club_index=$i
+            fi
+            if [ "${clubs[i]}" == "${away_club}" ]; then
+                away_club_index=$i
+            fi
+        done
+        #Insert non existing clubs based on club indexes
+        if [ "${home_club_index}" == 0 ] && [ "${clubs[0]}" != "${home_club}" ]; then
+            clubs+=(${home_club})
+            home_club_index=$[${#clubs[@]}-1]
+        fi
+        if [ "${away_club_index}" == 0 ] && [ "${clubs[0]}" != "${away_club}" ]; then
+            clubs+=(${away_club})
+            away_club_index=$[${#clubs[@]}-1]
+        fi
+        #------------------------------------------------------------------
+    fi
+    #------------------------------------------------------------------
+
+    #All indexes are now estimated and pointing to respective clubs 
+    #so that club[i] corresponds to points[i], goals_scored[i] and goals_against[i].
+    #Below, we assign +3,+1,0 points to clubs that won, tied and lost respectively.
+    if [ "${home_score}" -gt "${away_score}" ]; then
+        points[home_club_index]=$[${points[home_club_index]} + 3]
+    elif [ "${home_score}" -eq "${away_score}" ]; then
+        points[home_club_index]=$[${points[home_club_index]} + 1]
+        points[away_club_index]=$[${points[away_club_index]} + 1]
+    else
+        points[away_club_index]=$[${points[away_club_index]} + 3]
+    fi
+    #------------------------------------------------------------------
+
+    #Updating GA, GF arrays
+    goals_scored[home_club_index]=$[${goals_scored[home_club_index]} + ${home_score}]
+    goals_scored[away_club_index]=$[${goals_scored[away_club_index]} + ${away_score}]
+    goals_against[home_club_index]=$[${goals_against[home_club_index]} + ${away_score}]
+    goals_against[away_club_index]=$[${goals_against[away_club_index]} + ${home_score}]
+    #------------------------------------------------------------------
+done
+
+#Using Bubble Sort algorithm to sort the arrays using the points array. 
+#We chose this because it is the easiest one to implement, although we don't recommend it
+#for very large input files.
+for ((i = 0; i < ${#points[@]}; i++))
+do
+    for ((j = 1; j < $[${#points[@]} - $i]; j++))
+    do
+        #We swap on the following conditions:
+        #- Either when points[j - 1] < points[j]
+        #- OR when (points[j - 1] == points[j] BUT ALSO clubs[j] < clubs[j-1])
+        if [ ${points[j-1]} -lt ${points[j]} ] || ([ ${points[j-1]} -eq ${points[j]} ] && [ ${clubs[j]} \< ${clubs[j-1]} ]); then
+            #We swap all the arrays at the same time so their indexes remain connected
+            tempClubs=${clubs[j-1]}; let tempPoints=${points[j-1]}; let tempGF=${goals_scored[j-1]}; let tempGA=${goals_against[j-1]}
+            clubs[j-1]=${clubs[j]}; points[j-1]=${points[j]}; goals_scored[j-1]=${goals_scored[j]}; goals_against[j-1]=${goals_against[j]}
+            clubs[j]=${tempClubs}; points[j]=${tempPoints}; goals_scored[j]=${tempGF}; goals_against[j]=${tempGA}
+        fi
+    done
+done
+
+#BONUS - Figuring out the exact space needed to align the club information properly
+let maxLength=0
+for ((i = 0; i < ${#clubs[@]}; i++))
+do
+    if [ $[${#clubs[i]}] -gt ${maxLength} ]; then
+        maxLength=$[${#clubs[i]} + 8]
+    fi
+done
+#------------------------------------------------------------------
+
+#Printing Information
+for ((i = 0; i < ${#points[@]}; i++))
+do
+    #We use printf instead of echo so that we can take advantage of it's format properties for alignment purposes
+    printf "%s\t%-$((${maxLength}))s\t%s\t%s\t%s\n" "$[$i +1 ]." "${clubs[i]}" "${points[i]}" "${goals_scored[i]}-${goals_against[i]}"
+done
+#------------------------------------------------------------------
